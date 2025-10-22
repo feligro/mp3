@@ -3,7 +3,7 @@ var mongoose = require('mongoose');
 
 // Define our user schema
 var UserSchema = new mongoose.Schema({
-    name: String
+    name: {type: String, required: [true, 'Name is required'], unique: true},
 });
 
 // Export the Mongoose model
