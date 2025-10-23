@@ -24,10 +24,11 @@
   },
   "dependencies": {
     "body-parser": "^1.17.2",
+    "chokidar": "^4.0.3",
     "dotenv": "^17.2.3",
     "express": "^4.15.3",
     "mongodb": "^6.20.0",
     "mongoose": "^8.19.2",
-    "nodemon": "^1.11.0"
+    "nodemon": "^3.1.10"
   }
 }
