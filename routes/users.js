@@ -8,6 +8,14 @@ module.exports = function (router){
         return res.status(status).json({ message, data });
     }
     
+    function parseIfJSON(param) {
+        try {
+            return JSON.parse(decodeURIComponent(param));
+        } catch {
+            return null;
+        }
+    }
+
     usersRoute.post(async function (req, res) {
 
         // Use mongoose for schema validation
@@ -36,65 +44,48 @@ module.exports = function (router){
 
 
     usersRoute.get(async function (req, res) {
-
-        //mongoose query builder
-        let query = User.find({});
-        query.collection(User.collection);
-
-        // TODO: Add a query conditions (where, limit, etc)
-        //  if (req.query["where"]) {query.where(...); }
-        try{
-            if (req.query["where"]) {
-                query = query.where(JSON.parse(req.query["where"]));
-            }
-        } catch (err) {
-            sendResponse(res, 400, 'Invalid JSON in where', err);
-            return;
-        };
-
-        try{
-            if (req.query["sort"]) {
-                query = query.sort(JSON.parse(req.query["sort"]));
-            }
-        } catch (err) {
-            sendResponse(res, 400, 'Invalid JSON in sort', err);
-            return;
-        };
-
-        try{
-        if (req.query["select"]) {
-            query = query.select(JSON.parse(req.query["select"]));
-        }
-        } catch (err) {
-            sendResponse(res, 400, 'Invalid JSON in select', err);
-            return;
-        };
         
-        try{
+        try {
+            let query = User.find({});
+            query.collection(User.collection);
+
+            // WHERE
+            if (req.query["where"]) {
+                const where = parseIfJSON(req.query["where"]);
+                if (!where) { sendResponse(res, 400, "Invalid JSON in where", {}); return; }
+                query = query.where(where);
+            }
+
+            // SORT
+            if (req.query["sort"]) {
+                const sort = parseIfJSON(req.query["sort"]);
+                if (!sort) { sendResponse(res, 400, "Invalid JSON in sort", {}); return; }
+                query = query.sort(sort);
+            }
+
+            // SELECT
+            if (req.query["select"]) {
+                const select = parseIfJSON(req.query["select"]);
+                if (!select) { sendResponse(res, 400, "Invalid JSON in select", {}); return; }
+                query = query.select(select);
+            }
+
+            // COUNT
             if (req.query["count"] === "true") {
-                const where = req.query["where"] ? JSON.parse(req.query["where"]) : {};
-                const count = await User.countDocuments(where || {});
-                sendResponse(res, 200, 'OK', { count });
+                const where = req.query["where"] ? (parseIfJSON(req.query["where"]) || {}) : {};
+                const count = await User.countDocuments(where);
+                sendResponse(res, 200, "OK", { count });
                 return;
             }
-        } catch (err) {
-            sendResponse(res, 500, 'Server Error', err);
-            return;
-        }
 
-        if (req.query["skip"]) {
-            query = query.skip(parseInt(req.query["skip"]));
-        }
+            // SKIP / LIMIT
+            if (req.query["skip"]) query = query.skip(parseInt(req.query["skip"], 10));
+            if (req.query["limit"]) query = query.limit(parseInt(req.query["limit"], 10));
 
-        if (req.query["limit"]) {
-            query = query.limit(parseInt(req.query["limit"]));
-        }
-
-        try {
             const result = await query.exec();
-            sendResponse(res, 200, 'OK', result);
+            sendResponse(res, 200, "OK", result);
         } catch (err) {
-            sendResponse(res, 500, 'Server Error', err);
+            sendResponse(res, 500, "Server Error", err);
         }
     }); 
 
@@ -102,26 +93,16 @@ module.exports = function (router){
             // ID part
 
     usersIdRoute.get(async function (req, res) {
-
-        //mongoose query builder
         const userId = req.params["id"];
-        let query = User.findById(userId);
-        query.collection(User.collection);
-
-        // TODO: Add a query conditions (where, limit, etc)
-        //  if (req.query["where"]) {query.where(...); }
-
         try {
-        const result = await query.exec();
-
-        if (!result) {
-            sendResponse(res, 404, 'User not found', null);
-            return;
-        }
-
-        sendResponse(res, 200, 'OK', result);
+            const result = await User.findById(userId).exec();
+            if (!result) {
+                sendResponse(res, 404, "User not found", null);
+                return;
+            }
+            sendResponse(res, 200, "OK", result);
         } catch (err) {
-            sendResponse(res, 500, 'Server Error', err);
+            sendResponse(res, 500, "Server Error", err);
         }
     }); 
 
