@@ -8,6 +8,14 @@ module.exports = function (router) {
         return res.status(status).json({ message, data });
     }
 
+    function parseIfJSON(param) {
+        try {
+            return JSON.parse(decodeURIComponent(param));
+        } catch {
+            return null;
+        }
+    }
+
     tasksRoute.post(async function (req, res) {
         const task = new Task(req.body);
         const err = task.validateSync();
@@ -25,39 +33,44 @@ module.exports = function (router) {
     });
 
     tasksRoute.get(async function (req, res) {
-        let query = Task.find({});
-
         try {
-            if (req.query["where"]) query = query.where(JSON.parse(req.query["where"]));
-            if (req.query["sort"]) query = query.sort(JSON.parse(req.query["sort"]));
-            if (req.query["select"]) query = query.select(JSON.parse(req.query["select"]));
-        } catch (err) {
-            sendResponse(res, 400, 'Invalid JSON in query parameters', err);
-            return;
-        }
+            let query = Task.find({});
 
-        try {
+            if (req.query["where"]) {
+                const where = parseIfJSON(req.query["where"]);
+                if (!where) { sendResponse(res, 400, "Invalid JSON in where", {}); return; }
+                query = query.where(where);
+            }
+
+            if (req.query["sort"]) {
+                const sort = parseIfJSON(req.query["sort"]);
+                if (!sort) { sendResponse(res, 400, "Invalid JSON in sort", {}); return; }
+                query = query.sort(sort);
+            }
+
+            if (req.query["select"]) {
+                const select = parseIfJSON(req.query["select"]);
+                if (!select) { sendResponse(res, 400, "Invalid JSON in select", {}); return; }
+                query = query.select(select);
+            }
+
             if (req.query["count"] === "true") {
-                const where = req.query["where"] ? JSON.parse(req.query["where"]) : {};
+                const where = req.query["where"] ? (parseIfJSON(req.query["where"]) || {}) : {};
                 const count = await Task.countDocuments(where);
-                sendResponse(res, 200, 'OK', { count });
+                sendResponse(res, 200, "OK", { count });
                 return;
             }
-        } catch (err) {
-            sendResponse(res, 500, 'Server Error', err);
-            return;
-        }
 
-        if (req.query["skip"]) query = query.skip(parseInt(req.query["skip"], 10));
-        if (req.query["limit"]) query = query.limit(parseInt(req.query["limit"], 10));
+            if (req.query["skip"]) query = query.skip(parseInt(req.query["skip"], 10));
+            if (req.query["limit"]) query = query.limit(parseInt(req.query["limit"], 10));
 
-        try {
             const result = await query.exec();
-            sendResponse(res, 200, 'OK', result);
+            sendResponse(res, 200, "OK", result);
         } catch (err) {
-            sendResponse(res, 500, 'Server Error', err);
+            sendResponse(res, 500, "Server Error", err);
         }
     });
+
 
     tasksIdRoute.get(async function (req, res) {
         const taskId = req.params["id"];
@@ -78,23 +91,19 @@ module.exports = function (router) {
         const updatedTask = new Task(req.body);
         const err = updatedTask.validateSync();
         if (err) {
-            sendResponse(res, 400, 'Validation Error', err);
+            sendResponse(res, 400, "Validation Error", err);
             return;
         }
 
         try {
-            const task = await Task.findByIdAndUpdate(
-                taskId,
-                req.body,
-                { new: true, runValidators: true }
-            );
+            const task = await Task.findByIdAndUpdate(taskId, req.body, { new: true, runValidators: true });
             if (!task) {
-                sendResponse(res, 404, 'Task not found', null);
+                sendResponse(res, 404, "Task not found", null);
                 return;
             }
-            sendResponse(res, 200, 'Task updated successfully', task);
+            sendResponse(res, 200, "Task updated successfully", task);
         } catch (err) {
-            sendResponse(res, 500, 'Server Error', err);
+            sendResponse(res, 500, "Server Error", err);
         }
     });
 
