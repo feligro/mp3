@@ -73,6 +73,19 @@ module.exports = function (router) {
     }
 
     tasksRoute.post(async function (req, res) {
+        if (req.body.assignedUser && !req.body.assignedUserName) {
+            const user = await require('../models/user').findById(req.body.assignedUser);
+            req.body.assignedUserName = user ? user.name : "unassigned";
+        }
+        else if (!req.body.assignedUser && req.body.assignedUserName && req.body.assignedUserName !== "unassigned") {
+            const user = await require('../models/user').findOne({ name: req.body.assignedUserName });
+            req.body.assignedUser = user ? user._id.toString() : "";
+        }
+        else if (!req.body.assignedUser && !req.body.assignedUserName) {
+            req.body.assignedUser = "";
+            req.body.assignedUserName = "unassigned";
+        }
+
         const task = new Task(req.body);
         const err = task.validateSync();
         if (err) {
@@ -154,6 +167,20 @@ module.exports = function (router) {
 
     tasksIdRoute.put(async function (req, res) {
         const taskId = req.params["id"];
+
+        if (req.body.assignedUser && !req.body.assignedUserName) {
+            const user = await require('../models/user').findById(req.body.assignedUser);
+            req.body.assignedUserName = user ? user.name : "unassigned";
+        }
+        else if (!req.body.assignedUser && req.body.assignedUserName && req.body.assignedUserName !== "unassigned") {
+            const user = await require('../models/user').findOne({ name: req.body.assignedUserName });
+            req.body.assignedUser = user ? user._id.toString() : "";
+        }
+        else if (!req.body.assignedUser && !req.body.assignedUserName) {
+            req.body.assignedUser = "";
+            req.body.assignedUserName = "unassigned";
+        }
+
         const updatedTask = new Task(req.body);
         const err = updatedTask.validateSync();
         if (err) {
