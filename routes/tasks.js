@@ -3,9 +3,65 @@ module.exports = function (router) {
     const Task = require('../models/task');
     const tasksRoute = router.route('/tasks');
     const tasksIdRoute = router.route('/tasks/:id');
+    const User = require('../models/user');
 
     function sendResponse(res, status, message, data) {
-        return res.status(status).json({ message, data });
+        let formattedData = data;
+
+        if (data && data.name === 'ValidationError') {
+            const fields = Object.keys(data.errors);
+            const messages = Object.values(data.errors).map(e => e.message);
+            formattedData = {
+                type: 'ValidationError',
+                fields,
+                messages
+            };
+        }
+
+        else if (data && data.code === 11000) {
+            const field = Object.keys(data.keyValue || {})[0];
+            const value = data.keyValue ? data.keyValue[field] : '';
+            formattedData = {
+                type: 'DuplicateKeyError',
+                field,
+                value,
+                message: `Duplicate value for field "${field}": ${value}`
+            };
+        }
+
+        else if (message && message.startsWith('Invalid JSON')) {
+            formattedData = {
+                type: 'InvalidJSON',
+                message: 'One of your query parameters could not be parsed as valid JSON. Check your quotes and braces.'
+            };
+        }
+
+        else if (status === 404) {
+            formattedData = {
+                type: 'NotFound',
+                message: data || 'The requested resource could not be found.'
+            };
+        }
+
+        else if (data && data.name === 'CastError') {
+            formattedData = {
+                type: 'InvalidID',
+                message: `The provided ID "${data.value}" is not a valid identifier. Please check the ID format.`
+            };
+        }
+
+        else if (data instanceof Error) {
+            formattedData = {
+                type: data.name || 'ServerError',
+                message: data.message || 'An unexpected server error occurred.'
+            };
+        }
+
+        else if (typeof data === 'string') {
+            formattedData = { message: data };
+        }
+
+        return res.status(status).json({ message, data: formattedData });
     }
 
     function parseIfJSON(param) {
@@ -26,10 +82,20 @@ module.exports = function (router) {
 
         try {
             const savedTask = await task.save();
+            if (savedTask.assignedUser) {
+                await User.findByIdAndUpdate(
+                    savedTask.assignedUser,
+                    { $addToSet: { pendingTasks: savedTask._id.toString() } }
+                );
+            }
             sendResponse(res, 201, 'Task created successfully', savedTask);
         } catch (err) {
-            sendResponse(res, 500, 'Database Error', err);
-        }
+            if (err.code === 11000) {
+                    sendResponse(res, 400, 'Duplicate Key Error', err);
+                } else {
+                    sendResponse(res, 500, 'Database Error', err);
+                }
+            }
     });
 
     tasksRoute.get(async function (req, res) {
@@ -96,14 +162,27 @@ module.exports = function (router) {
         }
 
         try {
-            const task = await Task.findByIdAndUpdate(taskId, req.body, { new: true, runValidators: true });
-            if (!task) {
+            const existingTask = await Task.findById(taskId);
+            if (!existingTask) {
                 sendResponse(res, 404, "Task not found", null);
                 return;
             }
+
+            const task = await Task.findByIdAndUpdate(taskId, req.body, { new: true, runValidators: true });
+            if (existingTask.assignedUser && existingTask.assignedUser !== task.assignedUser) {
+                await User.findByIdAndUpdate(existingTask.assignedUser, { $pull: { pendingTasks: existingTask._id.toString() } });
+            }
+            if (task.assignedUser) {
+                await User.findByIdAndUpdate(task.assignedUser, { $addToSet: { pendingTasks: task._id.toString() } });
+            }
+
             sendResponse(res, 200, "Task updated successfully", task);
         } catch (err) {
-            sendResponse(res, 500, "Server Error", err);
+            if (err.code === 11000) {
+                sendResponse(res, 400, 'Duplicate Key Error', err);
+            } else {
+                sendResponse(res, 500, 'Database Error', err);
+            }
         }
     });
 
@@ -114,6 +193,12 @@ module.exports = function (router) {
             if (!deletedTask) {
                 sendResponse(res, 404, 'Task not found', null);
                 return;
+            }
+            if (deletedTask.assignedUser) {
+                await User.findByIdAndUpdate(
+                    deletedTask.assignedUser,
+                    { $pull: { pendingTasks: deletedTask._id.toString() } }
+                );
             }
             sendResponse(res, 200, 'Task deleted successfully', deletedTask);
         } catch (err) {

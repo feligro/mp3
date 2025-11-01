@@ -4,8 +4,65 @@ module.exports = function (router){
     const usersRoute = router.route('/users');
     const usersIdRoute = router.route('/users/:id');
 
+    const Task = require('../models/task');
+
     function sendResponse(res, status, message, data) {
-        return res.status(status).json({ message, data });
+        let formattedData = data;
+
+        if (data && data.name === 'ValidationError') {
+            const fields = Object.keys(data.errors);
+            const messages = Object.values(data.errors).map(e => e.message);
+            formattedData = {
+                type: 'ValidationError',
+                fields,
+                messages
+            };
+        }
+
+        else if (data && data.code === 11000) {
+            const field = Object.keys(data.keyValue || {})[0];
+            const value = data.keyValue ? data.keyValue[field] : '';
+            formattedData = {
+                type: 'DuplicateKeyError',
+                field,
+                value,
+                message: `Duplicate value for field "${field}": ${value}`
+            };
+        }
+
+        else if (message && message.startsWith('Invalid JSON')) {
+            formattedData = {
+                type: 'InvalidJSON',
+                message: 'One of your query parameters could not be parsed as valid JSON. Check your quotes and braces.'
+            };
+        }
+
+        else if (status === 404) {
+            formattedData = {
+                type: 'NotFound',
+                message: data ? data : 'The requested resource could not be found.'
+            };
+        }
+
+        else if (data && data.name === 'CastError') {
+            formattedData = {
+                type: 'InvalidID',
+                message: `The provided ID "${data.value}" is not a valid identifier. Please check the ID format.`
+            };
+        }
+
+        else if (data instanceof Error) {
+            formattedData = {
+                type: data.name || 'ServerError',
+                message: data.message || 'An unexpected server error occurred.'
+            };
+        }
+
+        else if (typeof data === 'string') {
+            formattedData = { message: data };
+        }
+
+        return res.status(status).json({ message, data: formattedData });
     }
     
     function parseIfJSON(param) {
@@ -35,8 +92,11 @@ module.exports = function (router){
 
             sendResponse(res, 201, 'User created successfully', savedUser);
         } catch (err) {
-            await session.abortTransaction();
-            sendResponse(res, 500, 'Database Error', err);
+            if (err.code === 11000) {
+                sendResponse(res, 400, 'Duplicate Key Error', err);
+            } else {
+                sendResponse(res, 500, 'Database Error', err);
+            }
         } finally {
             session.endSession();
         }
@@ -129,7 +189,11 @@ module.exports = function (router){
             }
             sendResponse(res, 200, "User updated successfully", user);
         } catch (err) {
-            sendResponse(res, 500, "Server Error", err);
+            if (err.code === 11000) {
+                sendResponse(res, 400, 'Duplicate Key Error', err);
+            } else {
+                sendResponse(res, 500, 'Database Error', err);
+            }
         }
     });
 
@@ -141,6 +205,10 @@ module.exports = function (router){
                 sendResponse(res, 404, "User not found", null);
                 return;
             }
+            await Task.updateMany(
+                { assignedUser: userId },
+                { $set: { assignedUser: "", assignedUserName: "unassigned" } }
+            );
             sendResponse(res, 200, "User deleted successfully", deletedUser);
         } catch (err) {
             sendResponse(res, 500, "Server Error", err);
