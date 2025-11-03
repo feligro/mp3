@@ -227,7 +227,7 @@ module.exports = function (router) {
                     { $pull: { pendingTasks: deletedTask._id.toString() } }
                 );
             }
-            sendResponse(res, 200, 'Task deleted successfully', deletedTask);
+            sendResponse(res, 204, "Task deleted successfully", null);
         } catch (err) {
             sendResponse(res, 500, 'Server Error', err);
         }

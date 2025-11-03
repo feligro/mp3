@@ -209,7 +209,7 @@ module.exports = function (router){
                 { assignedUser: userId },
                 { $set: { assignedUser: "", assignedUserName: "unassigned" } }
             );
-            sendResponse(res, 200, "User deleted successfully", deletedUser);
+            sendResponse(res, 204, "User deleted successfully", null);
         } catch (err) {
             sendResponse(res, 500, "Server Error", err);
         }
